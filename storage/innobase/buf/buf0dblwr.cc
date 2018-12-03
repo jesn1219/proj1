@@ -355,12 +355,12 @@ dberr_t buf_dblwr_init_or_load_pages(pfs_os_file_t file, const char *path) {
 dberr_t buf_dblwr_init_or_load_pages_internal(pfs_os_file_t file, const char *path) {
   // dberr_t : enum, db error no.
   byte *buf; // : using write to dblwr buf
-  byte *page; // 
+  byte *page; // : using point index of current page, either in buf & data
   page_no_t block1; // : starting page of block1 
   page_no_t block2; // : starting page of block2 
   space_id_t space_id; // space_id_t : tablespace identifier
   byte *read_buf; 
-  byte *doublewrite;
+  byte *doublewrite; // : starting address of doublewrite buf header 
   byte *unaligned_read_buf; 
   ibool reset_space_ids = FALSE;
   recv_dblwr_t &recv_dblwr = recv_sys->dblwr; // Doublewrite buffer state during recovery
@@ -507,7 +507,7 @@ n : number of bytes to read
 
   for (page_no_t i = 0; i < TRX_SYS_DOUBLEWRITE_BLOCK_SIZE * 2; i++) {
      if (reset_space_ids) {
-      page_no_t source_page_no;
+      page_no_t source_page_no; // : to store current index of page in buf
 
       space_id = 0;
       mach_write_to_4(page + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID, space_id);
@@ -533,11 +533,15 @@ n : number of bytes to read
 
       write_request.disable_compression();
 
-	// sysganda : apply the page to the storage
+	// sysganda : apply the page to the storage  
+	// jesnk : write page to storage (don't forget :  page is pointer,addressing value)
+	// os_file_write(type, name, file, buf, offset, n)
       err = os_file_write(write_request, path, file, page,
                           source_page_no * UNIV_PAGE_SIZE, UNIV_PAGE_SIZE);
+	// jesnk : source page order is same with data page order . so, offset is source_page_no * PAGE_SIZE
 
-	//sysganda
+
+	// sysganda
       printf("%s, source_page_no : %d, UNIV_PAGE_SIZE: %d\n", __func__, source_page_no, UNIV_PAGE_SIZE);
 	
 	if (err != DB_SUCCESS) {
@@ -555,7 +559,9 @@ n : number of bytes to read
 	recv_dblwr.add(page); // what is this do?
     }
 
-    page += univ_page_size.physical();
+    page += univ_page_size.physical(); // it printed 16kb 
+    // Printing_jesnk : univ_page_size.physical() : 0
+    // printf("Printing_jesnk : univ_page_size.physical() : %d\n",univ_page_size.physical());
   }
 	//sysganda : os_file_flush performs fsync() operation
   
